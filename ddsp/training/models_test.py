@@ -29,41 +29,42 @@ gin.add_config_file_search_path(GIN_PATH)
 
 class AutoencoderTest(parameterized.TestCase, tf.test.TestCase):
 
-  def setUp(self):
-    """Create some dummy input data for the chain."""
-    super().setUp()
-    # Create inputs.
-    self.n_batch = 4
-    self.n_frames = 1001
-    self.n_samples = 64000
-    inputs = {
-        'loudness_db': np.zeros([self.n_batch, self.n_frames]),
-        'f0_hz': np.zeros([self.n_batch, self.n_frames]),
-        'audio': np.random.randn(self.n_batch, self.n_samples),
-    }
-    self.inputs = {k: tf_float32(v) for k, v in inputs.items()}
+    def setUp(self):
+        """Create some dummy input data for the chain."""
+        super().setUp()
+        # Create inputs.
+        self.n_batch = 4
+        self.n_frames = 1001
+        self.n_samples = 64000
+        inputs = {
+            'loudness_db': np.zeros([self.n_batch, self.n_frames]),
+            'f0_hz': np.zeros([self.n_batch, self.n_frames]),
+            'audio': np.random.randn(self.n_batch, self.n_samples),
+        }
+        self.inputs = {k: tf_float32(v) for k, v in inputs.items()}
 
-  @parameterized.named_parameters(
-      ('nsynth_ae', 'papers/iclr2020/nsynth_ae.gin'),
-      ('nsynth_ae_abs', 'papers/iclr2020/nsynth_ae_abs.gin'),
-      ('solo_instrument', 'papers/iclr2020/solo_instrument.gin'),
-  )
-  def test_build_model(self, gin_file):
-    """Tests if Model builds properly and produces audio of correct shape.
+    @parameterized.named_parameters(
+        ('nsynth_ae', 'papers/iclr2020/nsynth_ae.gin'),
+        ('nsynth_ae_abs', 'papers/iclr2020/nsynth_ae_abs.gin'),
+        ('solo_instrument', 'papers/iclr2020/solo_instrument.gin'),
+    )
+    def test_build_model(self, gin_file):
+        """Tests if Model builds properly and produces audio of correct shape.
 
-    Args:
-      gin_file: Name of gin_file to use.
-    """
-    with gin.unlock_config():
-      gin.clear_config()
-      gin.parse_config_file(gin_file)
+        Args:
+          gin_file: Name of gin_file to use.
+        """
+        with gin.unlock_config():
+            gin.clear_config()
+            gin.parse_config_file(gin_file)
 
-    model = models.Autoencoder()
-    controls = model.get_controls(self.inputs)
-    self.assertIsInstance(controls, dict)
-    # Confirm that model generates correctly sized audio.
-    audio_gen_shape = controls['processor_group']['signal'].shape.as_list()
-    self.assertEqual(audio_gen_shape, list(self.inputs['audio'].shape))
+        model = models.Autoencoder()
+        controls = model.get_controls(self.inputs)
+        self.assertIsInstance(controls, dict)
+        # Confirm that model generates correctly sized audio.
+        audio_gen_shape = controls['processor_group']['signal'].shape.as_list()
+        self.assertEqual(audio_gen_shape, list(self.inputs['audio'].shape))
+
 
 if __name__ == '__main__':
-  tf.test.main()
+    tf.test.main()

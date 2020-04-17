@@ -22,31 +22,31 @@ import tensorflow.compat.v2 as tf
 
 class SpectralLossTest(tf.test.TestCase):
 
-  def test_output_shape_is_correct(self):
-    loss_obj = losses.SpectralLoss()
+    def test_output_shape_is_correct(self):
+        loss_obj = losses.SpectralLoss()
 
-    input_audio = tf.random.uniform((3, 16000), dtype=tf.float32)
-    target_audio = tf.random.uniform((3, 16000), dtype=tf.float32)
+        input_audio = tf.random.uniform((3, 16000), dtype=tf.float32)
+        target_audio = tf.random.uniform((3, 16000), dtype=tf.float32)
 
-    loss = loss_obj(input_audio, target_audio)
+        loss = loss_obj(input_audio, target_audio)
 
-    self.assertListEqual([], loss.shape.as_list())
-    self.assertTrue(np.isfinite(loss))
+        self.assertListEqual([], loss.shape.as_list())
+        self.assertTrue(np.isfinite(loss))
 
 
 class PretrainedCREPEEmbeddingLossTest(tf.test.TestCase):
 
-  def test_output_shape_is_correct(self):
-    loss_obj = losses.PretrainedCREPEEmbeddingLoss()
+    def test_output_shape_is_correct(self):
+        loss_obj = losses.PretrainedCREPEEmbeddingLoss()
 
-    input_audio = tf.random.uniform((3, 16000), dtype=tf.float32)
-    target_audio = tf.random.uniform((3, 16000), dtype=tf.float32)
+        input_audio = tf.random.uniform((3, 16000), dtype=tf.float32)
+        target_audio = tf.random.uniform((3, 16000), dtype=tf.float32)
 
-    loss = loss_obj(input_audio, target_audio)
+        loss = loss_obj(input_audio, target_audio)
 
-    self.assertListEqual([], loss.shape.as_list())
-    self.assertTrue(np.isfinite(loss))
+        self.assertListEqual([], loss.shape.as_list())
+        self.assertTrue(np.isfinite(loss))
 
 
 if __name__ == '__main__':
-  tf.test.main()
+    tf.test.main()

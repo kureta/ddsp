@@ -15,6 +15,7 @@
 # Lint as: python3
 """Install ddsp."""
 
+from version import __version__  # pylint: disable=g-import-not-at-top
 import os
 import sys
 import setuptools
@@ -22,7 +23,6 @@ import setuptools
 # To enable importing version.py directly, we add its path to sys.path.
 version_path = os.path.join(os.path.dirname(__file__), 'ddsp')
 sys.path.append(version_path)
-from version import __version__  # pylint: disable=g-import-not-at-top
 
 setuptools.setup(
     name='ddsp',

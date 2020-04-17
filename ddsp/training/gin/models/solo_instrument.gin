@@ -23,14 +23,14 @@ RnnFcDecoder.output_splits = (('amps', 1),
 # ==============
 
 ProcessorGroup.dag = [
-  (@synths.Additive(),
-    ['amps', 'harmonic_distribution', 'f0_hz']),
-  (@synths.FilteredNoise(),
-    ['noise_magnitudes']),
-  (@processors.Add(),
-    ['filtered_noise/signal', 'additive/signal']),
-  (@effects.Reverb(),
-    ['add/signal']),
+    (@synths.Additive(),
+     ['amps', 'harmonic_distribution', 'f0_hz']),
+    (@synths.FilteredNoise(),
+        ['noise_magnitudes']),
+    (@processors.Add(),
+        ['filtered_noise/signal', 'additive/signal']),
+    (@effects.Reverb(),
+        ['add/signal']),
 ]
 
 # Reverb

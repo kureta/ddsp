@@ -26,94 +26,95 @@ import tensorflow.compat.v2 as tf
 
 class ProcessorGroupTest(parameterized.TestCase, tf.test.TestCase):
 
-  def setUp(self):
-    """Create some dummy input data for the chain."""
-    super().setUp()
-    # Create inputs.
-    self.n_batch = 4
-    self.n_frames = 1000
-    self.n_time = 64000
-    rand_signal = lambda ch: np.random.randn(self.n_batch, self.n_frames, ch)
-    self.nn_outputs = {
-        'amps': rand_signal(1),
-        'harmonic_distribution': rand_signal(99),
-        'magnitudes': rand_signal(256),
-        'f0_hz': 200 + rand_signal(1),
-        'target_audio': np.random.randn(self.n_batch, self.n_time)
-    }
+    def setUp(self):
+        """Create some dummy input data for the chain."""
+        super().setUp()
+        # Create inputs.
+        self.n_batch = 4
+        self.n_frames = 1000
+        self.n_time = 64000
+        def rand_signal(ch): return np.random.randn(
+            self.n_batch, self.n_frames, ch)
+        self.nn_outputs = {
+            'amps': rand_signal(1),
+            'harmonic_distribution': rand_signal(99),
+            'magnitudes': rand_signal(256),
+            'f0_hz': 200 + rand_signal(1),
+            'target_audio': np.random.randn(self.n_batch, self.n_time)
+        }
 
-    # Create Processors.
-    additive = synths.Additive(name='additive')
-    noise = synths.FilteredNoise(name='noise')
-    add = processors.Add(name='add')
-    reverb = effects.Reverb(trainable=True, name='reverb')
+        # Create Processors.
+        additive = synths.Additive(name='additive')
+        noise = synths.FilteredNoise(name='noise')
+        add = processors.Add(name='add')
+        reverb = effects.Reverb(trainable=True, name='reverb')
 
-    # Create DAG for testing.
-    self.dag = [
-        (additive, ['amps', 'harmonic_distribution', 'f0_hz']),
-        (noise, ['magnitudes']),
-        (add, ['noise/signal', 'additive/signal']),
-        (reverb, ['add/signal']),
-    ]
-    self.expected_outputs = [
-        'amps',
-        'harmonic_distribution',
-        'magnitudes',
-        'f0_hz',
-        'target_audio',
-        'additive/signal',
-        'additive/controls/amplitudes',
-        'additive/controls/harmonic_distribution',
-        'additive/controls/f0_hz',
-        'noise/signal',
-        'noise/controls/magnitudes',
-        'add/signal',
-        'reverb/signal',
-        'reverb/controls/ir',
-        'processor_group/signal',
-    ]
+        # Create DAG for testing.
+        self.dag = [
+            (additive, ['amps', 'harmonic_distribution', 'f0_hz']),
+            (noise, ['magnitudes']),
+            (add, ['noise/signal', 'additive/signal']),
+            (reverb, ['add/signal']),
+        ]
+        self.expected_outputs = [
+            'amps',
+            'harmonic_distribution',
+            'magnitudes',
+            'f0_hz',
+            'target_audio',
+            'additive/signal',
+            'additive/controls/amplitudes',
+            'additive/controls/harmonic_distribution',
+            'additive/controls/f0_hz',
+            'noise/signal',
+            'noise/controls/magnitudes',
+            'add/signal',
+            'reverb/signal',
+            'reverb/controls/ir',
+            'processor_group/signal',
+        ]
 
-  def _check_tensor_outputs(self, strings_to_check, outputs):
-    for tensor_string in strings_to_check:
-      tensor = core.nested_lookup(tensor_string, outputs)
-      self.assertIsInstance(tensor, (np.ndarray, tf.Tensor))
+    def _check_tensor_outputs(self, strings_to_check, outputs):
+        for tensor_string in strings_to_check:
+            tensor = core.nested_lookup(tensor_string, outputs)
+            self.assertIsInstance(tensor, (np.ndarray, tf.Tensor))
 
-  def test_dag_construction(self):
-    """Tests if DAG is built properly and runs.
-    """
-    processor_group = processors.ProcessorGroup(dag=self.dag,
-                                                name='processor_group')
-    outputs = processor_group.get_controls(self.nn_outputs)
-    self.assertIsInstance(outputs, dict)
-    self._check_tensor_outputs(self.expected_outputs, outputs)
+    def test_dag_construction(self):
+        """Tests if DAG is built properly and runs.
+        """
+        processor_group = processors.ProcessorGroup(dag=self.dag,
+                                                    name='processor_group')
+        outputs = processor_group.get_controls(self.nn_outputs)
+        self.assertIsInstance(outputs, dict)
+        self._check_tensor_outputs(self.expected_outputs, outputs)
 
 
 class AddTest(tf.test.TestCase):
 
-  def test_output_is_correct(self):
-    processor = processors.Add(name='add')
-    x = tf.zeros((2, 3), dtype=tf.float32) + 1.0
-    y = tf.zeros((2, 3), dtype=tf.float32) + 2.0
+    def test_output_is_correct(self):
+        processor = processors.Add(name='add')
+        x = tf.zeros((2, 3), dtype=tf.float32) + 1.0
+        y = tf.zeros((2, 3), dtype=tf.float32) + 2.0
 
-    output = processor(x, y)
+        output = processor(x, y)
 
-    expected = np.zeros((2, 3), dtype=np.float32) + 3.0
-    self.assertAllEqual(expected, output)
+        expected = np.zeros((2, 3), dtype=np.float32) + 3.0
+        self.assertAllEqual(expected, output)
 
 
 class MixTest(tf.test.TestCase):
 
-  def test_output_shape_is_correct(self):
-    processor = processors.Mix(name='mix')
-    x1 = np.zeros((2, 100, 3), dtype=np.float32) + 1.0
-    x2 = np.zeros((2, 100, 3), dtype=np.float32) + 2.0
-    mix_level = np.zeros(
-        (2, 100, 1), dtype=np.float32) + 0.1  # will be passed to sigmoid
+    def test_output_shape_is_correct(self):
+        processor = processors.Mix(name='mix')
+        x1 = np.zeros((2, 100, 3), dtype=np.float32) + 1.0
+        x2 = np.zeros((2, 100, 3), dtype=np.float32) + 2.0
+        mix_level = np.zeros(
+            (2, 100, 1), dtype=np.float32) + 0.1  # will be passed to sigmoid
 
-    output = processor(x1, x2, mix_level)
+        output = processor(x1, x2, mix_level)
 
-    self.assertListEqual([2, 100, 3], output.shape.as_list())
+        self.assertListEqual([2, 100, 3], output.shape.as_list())
 
 
 if __name__ == '__main__':
-  tf.test.main()
+    tf.test.main()

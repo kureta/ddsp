@@ -47,12 +47,12 @@ SpectralLoss.logmag_weight = 1.0
 Autoencoder.processor_group = @processors.ProcessorGroup()
 
 ProcessorGroup.dag = [
-  (@synths.Additive(),
-    ['amps', 'harmonic_distribution', 'f0_hz']),
-  (@synths.FilteredNoise(),
-    ['noise_magnitudes']),
-  (@processors.Add(),
-    ['filtered_noise/signal', 'additive/signal']),
+    (@synths.Additive(),
+     ['amps', 'harmonic_distribution', 'f0_hz']),
+    (@synths.FilteredNoise(),
+        ['noise_magnitudes']),
+    (@processors.Add(),
+        ['filtered_noise/signal', 'additive/signal']),
 ]
 
 # Additive Synthesizer

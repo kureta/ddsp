@@ -66,30 +66,30 @@ flags.DEFINE_list(
 
 
 def run():
-  input_audio_paths = []
-  for filepattern in FLAGS.input_audio_filepatterns:
-    input_audio_paths.extend(tf.io.gfile.glob(filepattern))
+    input_audio_paths = []
+    for filepattern in FLAGS.input_audio_filepatterns:
+        input_audio_paths.extend(tf.io.gfile.glob(filepattern))
 
-  prepare_tfrecord(
-      input_audio_paths,
-      FLAGS.output_tfrecord_path,
-      num_shards=FLAGS.num_shards,
-      sample_rate=FLAGS.sample_rate,
-      frame_rate=FLAGS.frame_rate,
-      window_secs=FLAGS.example_secs,
-      hop_secs=FLAGS.sliding_window_hop_secs,
-      pipeline_options=FLAGS.pipeline_options)
+    prepare_tfrecord(
+        input_audio_paths,
+        FLAGS.output_tfrecord_path,
+        num_shards=FLAGS.num_shards,
+        sample_rate=FLAGS.sample_rate,
+        frame_rate=FLAGS.frame_rate,
+        window_secs=FLAGS.example_secs,
+        hop_secs=FLAGS.sliding_window_hop_secs,
+        pipeline_options=FLAGS.pipeline_options)
 
 
 def main(unused_argv):
-  """From command line."""
-  run()
+    """From command line."""
+    run()
 
 
 def console_entry_point():
-  """From pip installed script."""
-  app.run(main)
+    """From pip installed script."""
+    app.run(main)
 
 
 if __name__ == '__main__':
-  console_entry_point()
+    console_entry_point()
