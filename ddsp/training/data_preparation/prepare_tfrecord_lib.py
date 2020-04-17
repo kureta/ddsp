@@ -14,9 +14,19 @@
 
 # Lint as: python3
 """Apache Beam pipeline for computing TFRecord dataset from audio files."""
+from functools import partial
+from multiprocessing import Pool
 
 from absl import logging
-import apache_beam as beam
+
+try:
+    import apache_beam as beam
+except ModuleNotFoundError:
+    USE_BEAM = False
+else:
+    USE_BEAM = True
+
+from ddsp.core import hz_to_midi
 from ddsp.spectral_ops import _CREPE_SAMPLE_RATE
 from ddsp.spectral_ops import compute_f0
 from ddsp.spectral_ops import compute_loudness
@@ -52,7 +62,7 @@ def _load_audio_as_array(audio_path: str,
         # Zero pad missing samples, if any
         audio = _make_array_expected_length(audio, expected_len)
     # Convert from int to float representation.
-    audio /= 2**(8 * audio_segment.sample_width)
+    audio /= 2 ** (8 * audio_segment.sample_width)
     return audio
 
 
@@ -71,7 +81,8 @@ def _make_array_expected_length(array, expected_len, pad_value=0):
 def _load_audio(audio_path, sample_rate):
     """Load audio file."""
     logging.info("Loading '%s'.", audio_path)
-    beam.metrics.Metrics.counter('prepare-tfrecord', 'load-audio').inc()
+    if USE_BEAM:
+        beam.metrics.Metrics.counter('prepare-tfrecord', 'load-audio').inc()
     audio = _load_audio_as_array(audio_path, sample_rate)
     # Crepe pitch extraction only works at 16Khz sample rate
     audio_crepe = _load_audio_as_array(audio_path, _CREPE_SAMPLE_RATE)
@@ -80,7 +91,8 @@ def _load_audio(audio_path, sample_rate):
 
 def _add_loudness(ex, sample_rate, frame_rate, n_fft=2048):
     """Add loudness in dB."""
-    beam.metrics.Metrics.counter('prepare-tfrecord', 'compute-loudness').inc()
+    if USE_BEAM:
+        beam.metrics.Metrics.counter('prepare-tfrecord', 'compute-loudness').inc()
     audio = ex['audio']
     expected_len = int(len(audio) / sample_rate * frame_rate)
     mean_loudness_db = compute_loudness(audio, sample_rate, frame_rate, n_fft)
@@ -94,7 +106,8 @@ def _add_loudness(ex, sample_rate, frame_rate, n_fft=2048):
 
 def _add_f0_estimate(ex, frame_rate):
     """Add fundamental frequency (f0) estimate using CREPE."""
-    beam.metrics.Metrics.counter('prepare-tfrecord', 'estimate-f0').inc()
+    if USE_BEAM:
+        beam.metrics.Metrics.counter('prepare-tfrecord', 'estimate-f0').inc()
     audio = ex['audio_crepe']
     f0_hz, f0_confidence = compute_f0(audio, _CREPE_SAMPLE_RATE, frame_rate)
     ex = dict(ex)
@@ -117,7 +130,7 @@ def _split_example(
         n_padding = n_samples_padded - len(sequence)
         sequence = np.pad(sequence, (0, n_padding), mode='constant')
         for window_end in range(window_size, len(sequence) + 1, hop_size):
-            yield sequence[window_end-window_size:window_end]
+            yield sequence[window_end - window_size:window_end]
 
     for audio, audio_crepe, loudness_db, f0_hz, f0_confidence in zip(
             get_windows(ex['audio'], sample_rate),
@@ -125,7 +138,8 @@ def _split_example(
             get_windows(ex['loudness_db'], frame_rate),
             get_windows(ex['f0_hz'], frame_rate),
             get_windows(ex['f0_confidence'], frame_rate)):
-        beam.metrics.Metrics.counter('prepare-tfrecord', 'split-example').inc()
+        if USE_BEAM:
+            beam.metrics.Metrics.counter('prepare-tfrecord', 'split-example').inc()
         yield {
             'audio': audio,
             'audio_crepe': audio_crepe,
@@ -146,7 +160,7 @@ def _float_dict_to_tfexample(float_dict):
         ))
 
 
-def prepare_tfrecord(
+def prepare_tfrecord_using_beam(
         input_audio_paths,
         output_tfrecord_path,
         num_shards=None,
@@ -178,26 +192,76 @@ def prepare_tfrecord(
         pipeline_options)
     with beam.Pipeline(options=pipeline_options) as pipeline:
         examples = (
-            pipeline
-            | beam.Create(input_audio_paths)
-            | beam.Map(_load_audio, sample_rate))
+                pipeline
+                | beam.Create(input_audio_paths)
+                | beam.Map(_load_audio, sample_rate))
 
         if frame_rate:
             examples = (
-                examples
-                | beam.Map(_add_f0_estimate, frame_rate)
-                | beam.Map(_add_loudness, sample_rate, frame_rate))
+                    examples
+                    | beam.Map(_add_f0_estimate, frame_rate)
+                    | beam.Map(_add_loudness, sample_rate, frame_rate))
 
         if window_secs:
             examples |= beam.FlatMap(
                 _split_example, sample_rate, frame_rate, window_secs, hop_secs)
 
         _ = (
-            examples
-            | beam.Reshuffle()
-            | beam.Map(_float_dict_to_tfexample)
-            | beam.io.tfrecordio.WriteToTFRecord(
-                output_tfrecord_path,
-                num_shards=num_shards,
-                coder=beam.coders.ProtoCoder(tf.train.Example))
+                examples
+                | beam.Reshuffle()
+                | beam.Map(_float_dict_to_tfexample)
+                | beam.io.tfrecordio.WriteToTFRecord(
+            output_tfrecord_path,
+            num_shards=num_shards,
+            coder=beam.coders.ProtoCoder(tf.train.Example))
         )
+
+
+def do_multiprocess(function, args_list, num_processes=8):
+    with Pool(num_processes) as p:
+        results = list(p.map(function, args_list))
+    return results
+
+
+def prepare_tfrecord_no_beam(
+        input_audio_paths,
+        output_tfrecord_path,
+        num_shards=None,
+        sample_rate=16000,
+        frame_rate=250,
+        window_secs=4,
+        hop_secs=1,
+        pipeline_options=''):
+    if num_shards is not None or pipeline_options != '':
+        logging.warning('num_shards and pipeline_options arguments are not supported if not using apache beam!')
+    examples = do_multiprocess(
+        partial(_load_audio,
+                sample_rate=sample_rate),
+        input_audio_paths)
+
+    examples = [_add_f0_estimate(ex, frame_rate) for ex in examples]
+    pitch_mean = np.mean(np.concatenate([hz_to_midi(item['f0_hz']) for item in examples]))
+    print(f'model_pitch_mean: {pitch_mean}')
+    examples = do_multiprocess(
+        partial(_add_loudness,
+                sample_rate=sample_rate,
+                frame_rate=frame_rate),
+        examples)
+    loudness_avg_max = np.mean([np.max(item['loudness_db']) for item in examples])
+    print(f'model_loudness_avg_max: {loudness_avg_max}')
+    loudness_mean = np.mean(np.concatenate([item['loudness_db'] for item in examples]))
+    print(f'model_loudness_mean: {loudness_mean}')
+    split_examples = []
+    for ex in examples:
+        split = _split_example(ex, sample_rate, frame_rate, window_secs, hop_secs)
+        for s in split:
+            split_examples.append(s)
+
+    tfexamples = do_multiprocess(_float_dict_to_tfexample, split_examples)
+
+    with tf.io.TFRecordWriter(output_tfrecord_path) as writer:
+        for ex in tfexamples:
+            writer.write(ex.SerializeToString())
+
+
+prepare_tfrecord = prepare_tfrecord_using_beam if USE_BEAM else prepare_tfrecord_no_beam
