@@ -255,7 +255,7 @@ def compute_f0(audio, sample_rate, frame_rate, viterbi=True):
     # We compute this using the CREPE model's sample rate and then convert back to
     # our sample rate.
     n_secs = len(audio) / sample_rate
-    n_samples = n_secs * _CREPE_SAMPLE_RATE
+    n_samples = len(audio) * _CREPE_SAMPLE_RATE / sample_rate
     hop_size = sample_rate / frame_rate
     frame_size = _CREPE_FRAME_SIZE
     n_frames = np.ceil(n_secs * frame_rate)
