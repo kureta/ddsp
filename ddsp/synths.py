@@ -209,3 +209,98 @@ class Wavetable(processors.Processor):
                                           n_samples=self.n_samples,
                                           sample_rate=self.sample_rate)
         return signal
+
+
+@gin.register
+class QuadAdditive(processors.Processor):
+    def __init__(self,
+                 n_samples=64000,
+                 sample_rate=16000,
+                 scale_fn=core.exp_sigmoid,
+                 normalize_below_nyquist=True,
+                 name='quad_additive'):
+        super().__init__(name=name)
+        self.n_samples = n_samples
+        self.sample_rate = sample_rate
+        self.scale_fn = scale_fn
+        self.normalize_below_nyquist = normalize_below_nyquist
+
+        self.additives = [Additive(n_samples=n_samples,
+                                   sample_rate=sample_rate,
+                                   scale_fn=scale_fn,
+                                   normalize_below_nyquist=normalize_below_nyquist,
+                                   name=self.name + str(idx)) for idx in range(4)]
+
+    def get_controls(self,
+                     amp0, harm_dist0, f0_hz,
+                     amp1, harm_dist1, f1_hz,
+                     amp2, harm_dist2, f2_hz,
+                     amp3, harm_dist3, f3_hz,
+                     ):
+        controls = {}
+
+        ctrl = self.additives[0].get_controls(amp0, harm_dist0, f0_hz)
+        controls.update({
+            'amp0': ctrl['amplitudes'],
+            'harm_dist0': ctrl['harmonic_distribution'],
+            'f0_hz': ctrl['f0_hz']
+        })
+
+        ctrl = self.additives[1].get_controls(amp1, harm_dist1, f1_hz)
+        controls.update({
+            'amp1': ctrl['amplitudes'],
+            'harm_dist1': ctrl['harmonic_distribution'],
+            'f1_hz': ctrl['f0_hz']
+        })
+
+        ctrl = self.additives[2].get_controls(amp2, harm_dist2, f2_hz)
+        controls.update({
+            'amp2': ctrl['amplitudes'],
+            'harm_dist2': ctrl['harmonic_distribution'],
+            'f2_hz': ctrl['f0_hz']
+        })
+
+        ctrl = self.additives[3].get_controls(amp3, harm_dist3, f3_hz)
+        controls.update({
+            'amp3': ctrl['amplitudes'],
+            'harm_dist3': ctrl['harmonic_distribution'],
+            'f3_hz': ctrl['f0_hz']
+        })
+
+        return controls
+
+    def get_signal(self,
+                   amp0, harm_dist0, f0_hz,
+                   amp1, harm_dist1, f1_hz,
+                   amp2, harm_dist2, f2_hz,
+                   amp3, harm_dist3, f3_hz,
+                   ):
+        s0 = core.harmonic_synthesis(
+            frequencies=f0_hz,
+            amplitudes=amp0,
+            harmonic_distribution=harm_dist0,
+            n_samples=self.n_samples,
+            sample_rate=self.sample_rate)
+
+        s1 = core.harmonic_synthesis(
+            frequencies=f1_hz,
+            amplitudes=amp1,
+            harmonic_distribution=harm_dist1,
+            n_samples=self.n_samples,
+            sample_rate=self.sample_rate)
+
+        s2 = core.harmonic_synthesis(
+            frequencies=f2_hz,
+            amplitudes=amp2,
+            harmonic_distribution=harm_dist2,
+            n_samples=self.n_samples,
+            sample_rate=self.sample_rate)
+
+        s3 = core.harmonic_synthesis(
+            frequencies=f3_hz,
+            amplitudes=amp3,
+            harmonic_distribution=harm_dist3,
+            n_samples=self.n_samples,
+            sample_rate=self.sample_rate)
+
+        return s0 + s1 + s2 + s3

@@ -193,3 +193,35 @@ class TFRecordProvider(DataProvider):
                 tf.io.FixedLenFeature(
                     [self._feature_length], dtype=tf.float32),
         }
+
+
+@gin.register
+class PolyTFRecordProvider(TFRecordProvider):
+    def __init__(self, file_pattern=None, example_secs=4, sample_rate=16000, frame_rate=250, n=4):
+        super().__init__(file_pattern, example_secs, sample_rate, frame_rate)
+        self.n = n
+
+    @property
+    def default_file_pattern(self):
+        raise NotImplementedError
+
+    @property
+    def features_dict(self):
+        """Dictionary of features to read from dataset."""
+        features = {
+            'audio':
+                tf.io.FixedLenFeature([self._audio_length], dtype=tf.float32),
+        }
+
+        for idx in range(self.n):
+            features.update({
+                f'f{idx}_hz': tf.io.FixedLenFeature([self._feature_length], dtype=tf.float32),
+                f'f{idx}_confidence': tf.io.FixedLenFeature([self._feature_length], dtype=tf.float32)
+            })
+
+        features.update({
+            'loudness_db':
+            tf.io.FixedLenFeature([self._feature_length], dtype=tf.float32),
+        })
+
+        return features

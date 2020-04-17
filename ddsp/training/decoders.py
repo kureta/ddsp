@@ -133,3 +133,41 @@ class RnnFcDecoder(Decoder):
         # Final processing.
         x = self.out_stack(x)
         return self.dense_out(x)
+
+
+@gin.register
+class PolyRnnFcDecoder(Decoder):
+    def __init__(self,
+                 rnn_channels=512,
+                 rnn_type='gru',
+                 ch=512,
+                 layers_per_stack=3,
+                 output_splits=(('amps', 1), ('harmonic_distribution', 40)),
+                 name='poly_rnn_fc_decoder',
+                 n=4):
+        actual_output = []
+        for idx in range(n):
+            for key, value in output_splits:
+                if key != 'noise_magnitudes':
+                    actual_output.append((f'{key}{idx}', value))
+                elif idx == 0:
+                    actual_output.append((key, value))
+
+        super().__init__(output_splits=tuple(actual_output), name=name)
+
+        self.decoders = [RnnFcDecoder(
+            rnn_channels, rnn_type, ch, layers_per_stack, output_splits, f'{name}_0')]
+        self.decoders.extend([RnnFcDecoder(rnn_channels, rnn_type, ch, layers_per_stack,
+                                           [(key, value) for key,
+                                            value in output_splits if key != 'noise_magnitudes'],
+                                           f'{name}_{idx}') for idx in range(1, n)])
+
+    def decode(self, conditioning):
+        outs = []
+        for idx, dec in enumerate(self.decoders):
+            outs.append(dec.decode({
+                'f0_scaled': conditioning[f'f{idx}_scaled'],
+                'ld_scaled': conditioning['ld_scaled']
+            }))
+
+        return tf.concat(outs, axis=-1)

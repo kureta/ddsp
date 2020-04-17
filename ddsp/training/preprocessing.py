@@ -16,9 +16,11 @@
 """Library of preprocess functions."""
 
 import copy
-import ddsp
+
 import gin
 import tensorflow.compat.v2 as tf
+
+import ddsp
 
 hz_to_midi = ddsp.core.hz_to_midi
 F0_RANGE = ddsp.spectral_ops.F0_RANGE
@@ -75,5 +77,27 @@ class DefaultPreprocessor(Preprocessor):
         # For NN training, scale frequency and loudness to the range [0, 1].
         # Log-scale f0 features. Loudness from [-1, 0] to [1, 0].
         features['f0_scaled'] = hz_to_midi(features['f0_hz']) / F0_RANGE
+        features['ld_scaled'] = (features['loudness_db'] / LD_RANGE) + 1.0
+        return features
+
+
+@gin.register
+class PolyPreprocessor(DefaultPreprocessor):
+    def __init__(self, time_steps=1000, n=4):
+        super().__init__(time_steps)
+        self.n = n
+
+    def _default_processing(self, features):
+        """Always resample to `time_steps` and scale 'loudness_db' and 'f0_hz'."""
+        freqs = [f'f{idx}_hz' for idx in range(self.n)]
+        for k in ['loudness_db'] + freqs:
+            features[k] = at_least_3d(features[k])
+            features[k] = ddsp.core.resample(
+                features[k], n_timesteps=self.time_steps)
+        # For NN training, scale frequency and loudness to the range [0, 1].
+        # Log-scale f0 features. Loudness from [-1, 0] to [1, 0].
+        for idx in range(self.n):
+            features[f'f{idx}_scaled'] = hz_to_midi(
+                features[f'f{idx}_hz']) / F0_RANGE
         features['ld_scaled'] = (features['loudness_db'] / LD_RANGE) + 1.0
         return features
