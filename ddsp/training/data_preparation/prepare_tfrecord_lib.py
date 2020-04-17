@@ -241,16 +241,13 @@ def prepare_tfrecord_no_beam(
 
     examples = [_add_f0_estimate(ex, frame_rate) for ex in examples]
     pitch_mean = np.mean(np.concatenate([hz_to_midi(item['f0_hz']) for item in examples]))
-    print(f'model_pitch_mean: {pitch_mean}')
     examples = do_multiprocess(
         partial(_add_loudness,
                 sample_rate=sample_rate,
                 frame_rate=frame_rate),
         examples)
     loudness_avg_max = np.mean([np.max(item['loudness_db']) for item in examples])
-    print(f'model_loudness_avg_max: {loudness_avg_max}')
     loudness_mean = np.mean(np.concatenate([item['loudness_db'] for item in examples]))
-    print(f'model_loudness_mean: {loudness_mean}')
     split_examples = []
     for ex in examples:
         split = _split_example(ex, sample_rate, frame_rate, window_secs, hop_secs)
@@ -262,6 +259,10 @@ def prepare_tfrecord_no_beam(
     with tf.io.TFRecordWriter(output_tfrecord_path) as writer:
         for ex in tfexamples:
             writer.write(ex.SerializeToString())
+
+    print(f'model_pitch_mean: {pitch_mean}')
+    print(f'model_loudness_avg_max: {loudness_avg_max}')
+    print(f'model_loudness_mean: {loudness_mean}')
 
 
 prepare_tfrecord = prepare_tfrecord_using_beam if USE_BEAM else prepare_tfrecord_no_beam
