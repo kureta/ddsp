@@ -236,7 +236,7 @@ def compute_loudness(audio,
 
 
 @gin.register
-def compute_f0(audio, sample_rate, frame_rate, viterbi=True):
+def compute_f0(audio, sample_rate, frame_rate, viterbi=True, n=1):
     """Fundamental frequency (f0) estimate using CREPE.
 
     This function is non-differentiable and takes input as a numpy array.
@@ -273,7 +273,9 @@ def compute_f0(audio, sample_rate, frame_rate, viterbi=True):
         viterbi=viterbi,
         step_size=crepe_step_size,
         center=False,
-        verbose=0)
+        verbose=0,
+        n=n
+    )
 
     # Postprocessing.
     # Set nans to 0 in confidence.
