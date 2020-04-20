@@ -19,14 +19,15 @@ import io
 import os
 import time
 
-from absl import logging
-import ddsp
-from ddsp.core import tf_float32
 import gin
 import librosa
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow.compat.v2 as tf
+from absl import logging
+
+import ddsp
+from ddsp.core import tf_float32
 
 # Global values for evaluation.
 MIN_F0_CONFIDENCE = 0.85
@@ -59,7 +60,8 @@ def is_outlier(ground_truth_f0_conf):
 def compute_audio_features(audio,
                            n_fft=2048,
                            sample_rate=16000,
-                           frame_rate=250):
+                           frame_rate=250,
+                           n=1):
     """Compute features from audio."""
     audio_feats = {'audio': audio}
     audio = squeeze(audio)
@@ -68,7 +70,7 @@ def compute_audio_features(audio,
         audio, sample_rate, frame_rate, n_fft)
 
     audio_feats['f0_hz'], audio_feats['f0_confidence'] = (
-        ddsp.spectral_ops.compute_f0(audio, sample_rate, frame_rate))
+        ddsp.spectral_ops.compute_f0(audio, sample_rate, frame_rate, n=n))
 
     return audio_feats
 
@@ -270,6 +272,7 @@ def get_spectrogram(audio, rotate=False, size=1024):
 
 def spectrogram_summary(audio, audio_gen, step, name=''):
     """Writes a summary of spectrograms for a batch of images."""
+
     def specgram(a): return ddsp.spectral_ops.compute_logmag(
         tf_float32(a), size=768)
 
