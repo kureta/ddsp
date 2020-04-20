@@ -15,7 +15,7 @@
 # Lint as: python3
 """Install ddsp."""
 
-from version import __version__  # pylint: disable=g-import-not-at-top
+from ddsp.version import __version__  # pylint: disable=g-import-not-at-top
 import os
 import sys
 import setuptools
