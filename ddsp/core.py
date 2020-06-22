@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import copy
 from typing import Any, Dict, Text, TypeVar
 
 import gin
@@ -40,8 +41,25 @@ def tf_float32(x):
 
 
 def make_iterable(x):
-  """Ensure that x is an iterable."""
-  return x if isinstance(x, collections.Iterable) else [x]
+  """Wrap in a list if not iterable, return empty list if None."""
+  if x is None:
+    return []
+  else:
+    return x if isinstance(x, collections.Iterable) else [x]
+
+
+def copy_if_tf_function(x):
+  """Copy if wrapped by tf.function.
+
+  Prevents side-effects if x is the input to the tf.function and it is later
+  altered. If eager, avoids unnecessary copies.
+  Args:
+    x: Any inputs.
+
+  Returns:
+    A shallow copy of x if inside a tf.function.
+  """
+  return copy.copy(x) if not tf.executing_eagerly() else x
 
 
 def nested_lookup(nested_key: Text,
@@ -66,6 +84,25 @@ def nested_lookup(nested_key: Text,
   return value
 
 
+# Math -------------------------------------------------------------------------
+def log(x, base=2.0):
+  """Logarithm with base as an argument."""
+  return tf.math.log(x) / tf.math.log(base)
+
+
+def log_scale(x, min_x, max_x):
+  """Scales a -1 to 1 value logarithmically between min and max."""
+  x = tf_float32(x)
+  x = (x + 1.0) / 2.0  # Scale [-1, 1] to [0, 1]
+  return tf.exp((1.0 - x) * tf.math.log(min_x) + x * tf.math.log(max_x))
+
+
+def soft_limit(x, x_min=0.0, x_max=1.0):
+  """Softly limits inputs to the range [x_min, x_max]."""
+  return tf.nn.softplus(x) + x_min - tf.nn.softplus(x - (x_max - x_min))
+
+
+# Unit Conversions -------------------------------------------------------------
 def midi_to_hz(notes: Number) -> Number:
   """TF-compatible midi_to_hz function."""
   notes = tf_float32(notes)
@@ -75,8 +112,7 @@ def midi_to_hz(notes: Number) -> Number:
 def hz_to_midi(frequencies: Number) -> Number:
   """TF-compatible hz_to_midi function."""
   frequencies = tf_float32(frequencies)
-  log2 = lambda x: tf.math.log(x) / tf.math.log(2.0)
-  notes = 12.0 * (log2(frequencies) - log2(440.0)) + 69.0
+  notes = 12.0 * (log(frequencies, 2.0) - log(440.0, 2.0)) + 69.0
   # Map 0 Hz to MIDI 0 (Replace -inf with 0.)
   cond = tf.equal(notes, -np.inf)
   notes = tf.where(cond, 0.0, notes)
@@ -125,6 +161,70 @@ def hz_to_unit(hz: Number,
                       clip=clip)
 
 
+def hz_to_bark(hz):
+  """From Tranmuller (1990, https://asa.scitation.org/doi/10.1121/1.399849)."""
+  return 26.81 / (1.0 + (1960.0 / hz)) - 0.53
+
+
+def bark_to_hz(bark):
+  """From Tranmuller (1990, https://asa.scitation.org/doi/10.1121/1.399849)."""
+  return 1960.0 / (26.81 / (bark + 0.53) - 1.0)
+
+
+def hz_to_mel(hz):
+  """From Young et al. "The HTK book", Chapter 5.4."""
+  return 2595.0 * log(1.0 + hz / 700.0, 10.0)
+
+
+def mel_to_hz(mel):
+  """From Young et al. "The HTK book", Chapter 5.4."""
+  return 700.0 * (10.0**(mel / 2595.0) - 1.0)
+
+
+def hz_to_erb(hz):
+  """Equivalent Rectangular Bandwidths (ERB) from Moore & Glasberg (1996).
+
+  https://research.tue.nl/en/publications/a-revision-of-zwickers-loudness-model
+  https://ccrma.stanford.edu/~jos/bbt/Equivalent_Rectangular_Bandwidth.html
+  Args:
+    hz: Inputs frequencies in hertz.
+
+  Returns:
+    Critical bandwidths (in hertz) for each input frequency.
+  """
+  return 0.108 * hz + 24.7
+
+
+# Scaling functions ------------------------------------------------------------
+@gin.register
+def exp_sigmoid(x, exponent=10.0, max_value=2.0, threshold=1e-7):
+  """Exponentiated Sigmoid pointwise nonlinearity.
+
+  Bounds input to [threshold, max_value] with slope given by exponent.
+
+  Args:
+    x: Input tensor.
+    exponent: In nonlinear regime (away from x=0), the output varies by this
+      factor for every change of x by 1.0.
+    max_value: Limiting value at x=inf.
+    threshold: Limiting value at x=-inf. Stablizes training when outputs are
+      pushed to 0.
+
+  Returns:
+    A tensor with pointwise nonlinearity applied.
+  """
+  x = tf_float32(x)
+  return max_value * tf.nn.sigmoid(x)**tf.math.log(exponent) + threshold
+
+
+@gin.register
+def sym_exp_sigmoid(x, width=8.0):
+  """Symmetrical version of exp_sigmoid centered at (0, 1e-7)."""
+  x = tf_float32(x)
+  return exp_sigmoid(width * (tf.abs(x)/2.0 - 1.0))
+
+
+# Resampling -------------------------------------------------------------------
 def resample(inputs: tf.Tensor,
              n_timesteps: int,
              method: Text = 'linear',
@@ -136,10 +236,10 @@ def resample(inputs: tf.Tensor,
       [batch_size, n_frames], [batch_size, n_frames, channels], or
       [batch_size, n_frames, n_freq, channels].
     n_timesteps: Time resolution of the output signal.
-    method: Type of resampling, must be in ['linear', 'cubic', 'window']. Linear
-      and cubic ar typical bilinear, bicubic interpolation. Window uses
-      overlapping windows (only for upsampling) which is smoother for amplitude
-      envelopes.
+    method: Type of resampling, must be in ['nearest', 'linear', 'cubic',
+      'window']. Linear and cubic ar typical bilinear, bicubic interpolation.
+      'window' uses overlapping windows (only for upsampling) which is smoother
+      for amplitude envelopes with large frame sizes.
     add_endpoint: Hold the last timestep for an additional step as the endpoint.
       Then, n_timesteps is divided evenly into n_frames segments. If false, use
       the last timestep as the endpoint, producing (n_frames - 1) segments with
@@ -151,7 +251,8 @@ def resample(inputs: tf.Tensor,
 
   Raises:
     ValueError: If method is 'window' and input is 4-D.
-    ValueError: If method is not one of 'linear', 'cubic', or 'window'.
+    ValueError: If method is not one of 'nearest', 'linear', 'cubic', or
+      'window'.
   """
   inputs = tf_float32(inputs)
   is_1d = len(inputs.shape) == 1
@@ -175,7 +276,9 @@ def resample(inputs: tf.Tensor,
     return outputs[:, :, 0, :] if not is_4d else outputs
 
   # Perform resampling.
-  if method == 'linear':
+  if method == 'nearest':
+    outputs = _image_resize(tf.compat.v1.image.ResizeMethod.NEAREST_NEIGHBOR)
+  elif method == 'linear':
     outputs = _image_resize(tf.compat.v1.image.ResizeMethod.BILINEAR)
   elif method == 'cubic':
     outputs = _image_resize(tf.compat.v1.image.ResizeMethod.BICUBIC)
@@ -183,7 +286,7 @@ def resample(inputs: tf.Tensor,
     outputs = upsample_with_windows(inputs, n_timesteps, add_endpoint)
   else:
     raise ValueError('Method ({}) is invalid. Must be one of {}.'.format(
-        method, "['linear', 'cubic', 'window']"))
+        method, "['nearest', 'linear', 'cubic', 'window']"))
 
   # Return outputs to the same dimensionality of the inputs.
   if is_1d:
@@ -264,41 +367,6 @@ def upsample_with_windows(inputs: tf.Tensor,
 
   # Trim the rise and fall of the first and last window.
   return x[:, hop_size:-hop_size, :]
-
-
-def log_scale(x, min_x, max_x):
-  """Scales a -1 to 1 value logarithmically between min and max."""
-  x = tf_float32(x)
-  x = (x + 1.0) / 2.0  # Scale [-1, 1] to [0, 1]
-  return tf.exp((1.0 - x) * tf.math.log(min_x) + x * tf.math.log(max_x))
-
-
-@gin.register
-def exp_sigmoid(x, exponent=10.0, max_value=2.0, threshold=1e-7):
-  """Exponentiated Sigmoid pointwise nonlinearity.
-
-  Bounds input to [threshold, max_value] with slope given by exponent.
-
-  Args:
-    x: Input tensor.
-    exponent: In nonlinear regime (away from x=0), the output varies by this
-      factor for every change of x by 1.0.
-    max_value: Limiting value at x=inf.
-    threshold: Limiting value at x=-inf. Stablizes training when outputs are
-      pushed to 0.
-
-  Returns:
-    A tensor with pointwise nonlinearity applied.
-  """
-  x = tf_float32(x)
-  return max_value * tf.nn.sigmoid(x)**tf.math.log(exponent) + threshold
-
-
-@gin.register
-def sym_exp_sigmoid(x, width=8.0):
-  """Symmetrical version of exp_sigmoid centered at (0, 1e-7)."""
-  x = tf_float32(x)
-  return exp_sigmoid(width * (tf.abs(x)/2.0 - 1.0))
 
 
 # Additive Synthesizer ---------------------------------------------------------
@@ -798,7 +866,7 @@ def frequency_impulse_response(magnitudes: tf.Tensor,
   Args:
     magnitudes: Frequency transfer curve. Float32 Tensor of shape [batch,
       n_frames, n_frequencies] or [batch, n_frequencies]. The frequencies of the
-      last dimension are ordered as [0, f_nyqist / (n_frames -1), ...,
+      last dimension are ordered as [0, f_nyqist / (n_frequencies -1), ...,
       f_nyquist], where f_nyquist is (sample_rate / 2). Automatically splits the
       audio into equally sized frames to match frames in magnitudes.
     window_size: Size of the window to apply in the time domain. If window_size
@@ -878,7 +946,7 @@ def frequency_filter(audio: tf.Tensor,
     audio: Input audio. Tensor of shape [batch, audio_timesteps].
     magnitudes: Frequency transfer curve. Float32 Tensor of shape [batch,
       n_frames, n_frequencies] or [batch, n_frequencies]. The frequencies of the
-      last dimension are ordered as [0, f_nyqist / (n_frames -1), ...,
+      last dimension are ordered as [0, f_nyqist / (n_frequencies -1), ...,
       f_nyquist], where f_nyquist is (sample_rate / 2). Automatically splits the
       audio into equally sized frames to match frames in magnitudes.
     window_size: Size of the window to apply in the time domain. If window_size

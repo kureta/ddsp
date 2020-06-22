@@ -135,8 +135,9 @@ class SpectralLoss(tfkl.Layer):
                                                      self.loss_type)
 
     if self.loudness_weight > 0:
-      target = spectral_ops.compute_loudness(target_audio, n_fft=2048)
-      value = spectral_ops.compute_loudness(audio, n_fft=2048)
+      target = spectral_ops.compute_loudness(target_audio, n_fft=2048,
+                                             use_tf=True)
+      value = spectral_ops.compute_loudness(audio, n_fft=2048, use_tf=True)
       loss += self.loudness_weight * mean_difference(target, value,
                                                      self.loss_type)
 
@@ -220,7 +221,7 @@ class PretrainedCREPE(tfkl.Layer):
     self._model = crepe.core.build_and_load_model(self._model_capacity)
     self.frame_length = 1024
 
-  def build(self, x_shape):
+  def build(self, unused_x_shape):
     self.layer_names = [l.name for l in self._model.layers]
 
     if self._activation_layer not in self.layer_names:
