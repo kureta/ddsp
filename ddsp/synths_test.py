@@ -21,54 +21,53 @@ import tensorflow.compat.v2 as tf
 
 class AdditiveTest(tf.test.TestCase):
 
-    def test_output_shape_is_correct(self):
-        synthesizer = synths.Additive(
-            n_samples=64000,
-            sample_rate=16000,
-            scale_fn=None,
-            normalize_below_nyquist=True)
-        batch_size = 3
-        num_frames = 1000
-        amp = tf.zeros((batch_size, num_frames, 1), dtype=tf.float32) + 1.0
-        harmonic_distribution = tf.zeros(
-            (batch_size, num_frames, 16), dtype=tf.float32) + 1.0 / 16
-        f0_hz = tf.zeros((batch_size, num_frames, 1), dtype=tf.float32) + 16000
+  def test_output_shape_is_correct(self):
+    synthesizer = synths.Additive(
+        n_samples=64000,
+        sample_rate=16000,
+        scale_fn=None,
+        normalize_below_nyquist=True)
+    batch_size = 3
+    num_frames = 1000
+    amp = tf.zeros((batch_size, num_frames, 1), dtype=tf.float32) + 1.0
+    harmonic_distribution = tf.zeros(
+        (batch_size, num_frames, 16), dtype=tf.float32) + 1.0 / 16
+    f0_hz = tf.zeros((batch_size, num_frames, 1), dtype=tf.float32) + 16000
 
-        output = synthesizer(amp, harmonic_distribution, f0_hz)
+    output = synthesizer(amp, harmonic_distribution, f0_hz)
 
-        self.assertAllEqual([batch_size, 64000], output.shape.as_list())
+    self.assertAllEqual([batch_size, 64000], output.shape.as_list())
 
 
 class FilteredNoiseTest(tf.test.TestCase):
 
-    def test_output_shape_is_correct(self):
-        synthesizer = synths.FilteredNoise(n_samples=16000)
-        filter_bank_magnitudes = tf.zeros(
-            (3, 16000, 100), dtype=tf.float32) + 3.0
-        output = synthesizer(filter_bank_magnitudes)
+  def test_output_shape_is_correct(self):
+    synthesizer = synths.FilteredNoise(n_samples=16000)
+    filter_bank_magnitudes = tf.zeros((3, 16000, 100), dtype=tf.float32) + 3.0
+    output = synthesizer(filter_bank_magnitudes)
 
-        self.assertAllEqual([3, 16000], output.shape.as_list())
+    self.assertAllEqual([3, 16000], output.shape.as_list())
 
 
 class WavetableTest(tf.test.TestCase):
 
-    def test_output_shape_is_correct(self):
-        synthesizer = synths.Wavetable(
-            n_samples=64000,
-            sample_rate=16000,
-            scale_fn=None)
-        batch_size = 3
-        num_frames = 1000
-        n_wavetable = 1024
-        amp = tf.zeros((batch_size, num_frames, 1), dtype=tf.float32) + 1.0
-        wavetables = tf.zeros(
-            (batch_size, num_frames, n_wavetable), dtype=tf.float32)
-        f0_hz = tf.zeros((batch_size, num_frames, 1), dtype=tf.float32) + 440
+  def test_output_shape_is_correct(self):
+    synthesizer = synths.Wavetable(
+        n_samples=64000,
+        sample_rate=16000,
+        scale_fn=None)
+    batch_size = 3
+    num_frames = 1000
+    n_wavetable = 1024
+    amp = tf.zeros((batch_size, num_frames, 1), dtype=tf.float32) + 1.0
+    wavetables = tf.zeros(
+        (batch_size, num_frames, n_wavetable), dtype=tf.float32)
+    f0_hz = tf.zeros((batch_size, num_frames, 1), dtype=tf.float32) + 440
 
-        output = synthesizer(amp, wavetables, f0_hz)
+    output = synthesizer(amp, wavetables, f0_hz)
 
-        self.assertAllEqual([batch_size, 64000], output.shape.as_list())
+    self.assertAllEqual([batch_size, 64000], output.shape.as_list())
 
 
 if __name__ == '__main__':
-    tf.test.main()
+  tf.test.main()

@@ -104,88 +104,88 @@ GIN_PATH = pkg_resources.resource_filename(__name__, 'gin')
 
 
 def delay_start():
-    """Optionally delay the start of the run."""
-    delay_time = FLAGS.initial_delay_secs
-    if delay_time:
-        logging.info('Waiting for %i second(s)', delay_time)
-        time.sleep(delay_time)
+  """Optionally delay the start of the run."""
+  delay_time = FLAGS.initial_delay_secs
+  if delay_time:
+    logging.info('Waiting for %i second(s)', delay_time)
+    time.sleep(delay_time)
 
 
 def parse_gin(model_dir):
-    """Parse gin config from --gin_file, --gin_param, and the model directory."""
-    # Add user folders to the gin search path.
-    for gin_search_path in [GIN_PATH] + FLAGS.gin_search_path:
-        gin.add_config_file_search_path(gin_search_path)
+  """Parse gin config from --gin_file, --gin_param, and the model directory."""
+  # Add user folders to the gin search path.
+  for gin_search_path in [GIN_PATH] + FLAGS.gin_search_path:
+    gin.add_config_file_search_path(gin_search_path)
 
-    # Parse gin configs, later calls override earlier ones.
-    with gin.unlock_config():
-        # Optimization defaults.
-        use_tpu = bool(FLAGS.tpu)
-        opt_default = 'base.gin' if not use_tpu else 'base_tpu.gin'
-        gin.parse_config_file(os.path.join('optimization', opt_default))
+  # Parse gin configs, later calls override earlier ones.
+  with gin.unlock_config():
+    # Optimization defaults.
+    use_tpu = bool(FLAGS.tpu)
+    opt_default = 'base.gin' if not use_tpu else 'base_tpu.gin'
+    gin.parse_config_file(os.path.join('optimization', opt_default))
 
-        # Load operative_config if it exists (model has already trained).
-        operative_config = os.path.join(model_dir, 'operative_config-0.gin')
-        if tf.io.gfile.exists(operative_config):
-            gin.parse_config_file(operative_config, skip_unknown=True)
+    # Load operative_config if it exists (model has already trained).
+    operative_config = os.path.join(model_dir, 'operative_config-0.gin')
+    if tf.io.gfile.exists(operative_config):
+      gin.parse_config_file(operative_config, skip_unknown=True)
 
-        # User gin config and user hyperparameters from flags.
-        gin.parse_config_files_and_bindings(
-            FLAGS.gin_file, FLAGS.gin_param, skip_unknown=True)
+    # User gin config and user hyperparameters from flags.
+    gin.parse_config_files_and_bindings(
+        FLAGS.gin_file, FLAGS.gin_param, skip_unknown=True)
 
 
 def allow_memory_growth():
-    """Sets the GPUs to grow the memory usage as is needed by the process."""
-    gpus = tf.config.experimental.list_physical_devices('GPU')
-    if gpus:
-        try:
-            # Currently, memory growth needs to be the same across GPUs.
-            for gpu in gpus:
-                tf.config.experimental.set_memory_growth(gpu, True)
-        except RuntimeError as e:
-            # Memory growth must be set before GPUs have been initialized.
-            print(e)
+  """Sets the GPUs to grow the memory usage as is needed by the process."""
+  gpus = tf.config.experimental.list_physical_devices('GPU')
+  if gpus:
+    try:
+      # Currently, memory growth needs to be the same across GPUs.
+      for gpu in gpus:
+        tf.config.experimental.set_memory_growth(gpu, True)
+    except RuntimeError as e:
+      # Memory growth must be set before GPUs have been initialized.
+      print(e)
 
 
 def main(unused_argv):
-    """Parse gin config and run ddsp training, evaluation, or sampling."""
-    model_dir = os.path.expanduser(FLAGS.model_dir)
-    parse_gin(model_dir)
-    if FLAGS.allow_memory_growth:
-        allow_memory_growth()
+  """Parse gin config and run ddsp training, evaluation, or sampling."""
+  model_dir = os.path.expanduser(FLAGS.model_dir)
+  parse_gin(model_dir)
+  if FLAGS.allow_memory_growth:
+    allow_memory_growth()
 
-    # Training.
-    if FLAGS.mode == 'train':
-        strategy = train_util.get_strategy(tpu=FLAGS.tpu, gpus=FLAGS.gpu)
-        with strategy.scope():
-            model = models.get_model()
-            trainer = train_util.Trainer(model, strategy)
+  # Training.
+  if FLAGS.mode == 'train':
+    strategy = train_util.get_strategy(tpu=FLAGS.tpu, gpus=FLAGS.gpu)
+    with strategy.scope():
+      model = models.get_model()
+      trainer = train_util.Trainer(model, strategy)
 
-        train_util.train(data_provider=gin.REQUIRED,
-                         trainer=trainer,
-                         model_dir=model_dir)
+    train_util.train(data_provider=gin.REQUIRED,
+                     trainer=trainer,
+                     model_dir=model_dir)
 
-    # Evaluation.
-    elif FLAGS.mode == 'eval':
-        model = models.get_model()
-        delay_start()
-        eval_util.evaluate(data_provider=gin.REQUIRED,
-                           model=model,
-                           model_dir=model_dir)
+  # Evaluation.
+  elif FLAGS.mode == 'eval':
+    model = models.get_model()
+    delay_start()
+    eval_util.evaluate(data_provider=gin.REQUIRED,
+                       model=model,
+                       model_dir=model_dir)
 
-    # Sampling.
-    elif FLAGS.mode == 'sample':
-        model = models.get_model()
-        delay_start()
-        eval_util.sample(data_provider=gin.REQUIRED,
-                         model=model,
-                         model_dir=model_dir)
+  # Sampling.
+  elif FLAGS.mode == 'sample':
+    model = models.get_model()
+    delay_start()
+    eval_util.sample(data_provider=gin.REQUIRED,
+                     model=model,
+                     model_dir=model_dir)
 
 
 def console_entry_point():
-    """From pip installed script."""
-    app.run(main)
+  """From pip installed script."""
+  app.run(main)
 
 
 if __name__ == '__main__':
-    console_entry_point()
+  console_entry_point()
